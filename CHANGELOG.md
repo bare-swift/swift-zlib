@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-12
+
+### Added
+- `Zlib.encode(_:level:)` — RFC 1950 zlib encoder. 2-byte header (CMF=0x78 + FLG with FCHECK / FDICT / FLEVEL) + DEFLATE body (via swift-deflate v0.2) + 4-byte big-endian ADLER32 trailer.
+- `Zlib.Encoder` value type — single-shot encoder (streaming ships in v0.3).
+- `Zlib.Encoder.Level` typealias for `Deflate.Encoder.Level` (`.none`/`.fast`/`.default`/`.best`); FLEVEL hint is set accordingly (.none/.fast → 0, .default → 2, .best → 3).
+- Internal `Adler32` type — extracted from the decoder so encode and decode share one ADLER-32 implementation.
+- 12 new tests across 3 suites covering API surface (CMF, header check, FLEVEL hint, FDICT=0), round-trip via v0.1 decoder (empty / ASCII / runs / 64 KiB / all levels / big-endian trailer), and v0.1 stability.
+
+### Changed
+- swift-deflate dep bumped from 0.1.0 to 0.2.0 (additive — unlocks `Deflate.encode`).
+- Internal: `Decoder.adler32(_:)` static method moved to `Adler32.compute(_:)` (internal refactor, no public API change).
+
+### Unchanged from v0.1
+- `Zlib.decode(_:)` — bit-for-bit unchanged.
+- `ZlibError` cases — all seven v0.1 cases preserved.
+
+### Limitations (out of scope for v0.2)
+- Preset dictionary encoding (FDICT=1). v0.2 always emits FDICT=0.
+- Streaming encoding. v0.2 takes a single full `Bytes` input.
+
 ## [0.1.0] - 2026-05-10
 
 ### Added
