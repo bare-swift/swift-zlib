@@ -153,3 +153,127 @@ struct Adler32Tests {
         #expect(Adler32.compute(bs) == 0x1A0B045D)
     }
 }
+
+@Suite("Zlib.Encoder API surface")
+struct ZlibEncoderAPITests {
+    @Test("encode emits CMF=0x78")
+    func cmfDeflate32K() {
+        let out = Zlib.encode(Bytes([0x41]))
+        #expect(out.storage.count >= 6)
+        #expect(out.storage[0] == 0x78)
+    }
+
+    @Test("FLG passes the (CMF * 256 + FLG) % 31 == 0 check")
+    func headerCheck() {
+        for level: Zlib.Encoder.Level in [.none, .fast, .default, .best] {
+            let out = Zlib.encode(Bytes([0x41]), level: level)
+            let v = (UInt32(out.storage[0]) << 8) | UInt32(out.storage[1])
+            #expect(v % 31 == 0, "header check failed at \(level)")
+        }
+    }
+
+    @Test("FLEVEL hint: .none/.fast → 0, .default → 2, .best → 3")
+    func flevelHint() {
+        let input = Bytes([0x41])
+        let noneFlg = Zlib.encode(input, level: .none).storage[1]
+        let fastFlg = Zlib.encode(input, level: .fast).storage[1]
+        let defFlg  = Zlib.encode(input, level: .default).storage[1]
+        let bestFlg = Zlib.encode(input, level: .best).storage[1]
+        #expect((noneFlg >> 6) == 0)
+        #expect((fastFlg >> 6) == 0)
+        #expect((defFlg  >> 6) == 2)
+        #expect((bestFlg >> 6) == 3)
+    }
+
+    @Test("FDICT bit is 0 (no preset dictionary)")
+    func fdictZero() {
+        let out = Zlib.encode(Bytes([0x41]))
+        #expect(out.storage[1] & 0x20 == 0)
+    }
+}
+
+@Suite("Zlib encoder round-trip via v0.1 decoder")
+struct ZlibEncoderRoundTripTests {
+    @Test("empty input")
+    func empty() throws {
+        let input = Bytes()
+        let encoded = Zlib.encode(input)
+        let back = try Zlib.decode(encoded)
+        #expect(back.storage == input.storage)
+    }
+
+    @Test("ASCII 'hello'")
+    func helloAscii() throws {
+        let input = Bytes([0x68, 0x65, 0x6C, 0x6C, 0x6F])
+        let encoded = Zlib.encode(input)
+        let back = try Zlib.decode(encoded)
+        #expect(back.storage == input.storage)
+    }
+
+    @Test("100 bytes of 0x41 at .fast")
+    func runsFast() throws {
+        let input = Bytes(ContiguousArray(repeating: UInt8(0x41), count: 100))
+        let encoded = Zlib.encode(input, level: .fast)
+        let back = try Zlib.decode(encoded)
+        #expect(back.storage == input.storage)
+        #expect(encoded.storage.count < input.storage.count / 2)
+    }
+
+    @Test("64 KiB input round-trips at .default")
+    func largeDefault() throws {
+        var bytes = ContiguousArray<UInt8>()
+        bytes.reserveCapacity(65_536)
+        for i in 0..<65_536 {
+            bytes.append(UInt8(truncatingIfNeeded: i & 0x3F))
+        }
+        let input = Bytes(bytes)
+        let encoded = Zlib.encode(input, level: .default)
+        let back = try Zlib.decode(encoded)
+        #expect(back.storage == input.storage)
+    }
+
+    @Test("all four levels round-trip identical input")
+    func allLevels() throws {
+        let input = Bytes(ContiguousArray(repeating: UInt8(0x42), count: 50))
+        for level: Zlib.Encoder.Level in [.none, .fast, .default, .best] {
+            let encoded = Zlib.encode(input, level: level)
+            let back = try Zlib.decode(encoded)
+            #expect(back.storage == input.storage,
+                    "level \(level) failed round-trip")
+        }
+    }
+
+    @Test("ADLER32 trailer is big-endian (last 4 bytes)")
+    func adlerBigEndian() {
+        // For input "abc", ADLER32 = 0x024D0127. Trailer must be 02 4D 01 27.
+        let input = Bytes([0x61, 0x62, 0x63])
+        let encoded = Zlib.encode(input)
+        let n = encoded.storage.count
+        #expect(encoded.storage[n - 4] == 0x02)
+        #expect(encoded.storage[n - 3] == 0x4D)
+        #expect(encoded.storage[n - 2] == 0x01)
+        #expect(encoded.storage[n - 1] == 0x27)
+    }
+}
+
+@Suite("v0.1 API stability — additive only")
+struct ZlibV01StabilityTests {
+    @Test("Zlib.decode(_:) still round-trips with v0.2 encoder")
+    func decodeUnchanged() throws {
+        let input = Bytes([0x68, 0x65, 0x6C, 0x6C, 0x6F])
+        let encoded = Zlib.encode(input)
+        let back = try Zlib.decode(encoded)
+        #expect(back.storage == input.storage)
+    }
+
+    @Test("ZlibError v0.1 cases still present")
+    func errorCasesPresent() {
+        let e: ZlibError = .truncated
+        switch e {
+        case .truncated, .unsupportedCompressionMethod, .invalidWindowSize,
+             .headerCheckFailed, .presetDictionaryUnsupported, .adler32Mismatch,
+             .malformedDeflate:
+            #expect(true)
+        }
+    }
+}

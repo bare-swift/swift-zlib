@@ -33,3 +33,31 @@ public enum Zlib: Sendable {
         try Decoder.decode(bytes)
     }
 }
+
+extension Zlib {
+    /// RFC 1950 zlib compression entry point. Produces a 2-byte header,
+    /// the DEFLATE body, and a 4-byte big-endian ADLER32 trailer.
+    ///
+    /// Per [RFC-0014](https://github.com/bare-swift/bare-swift/blob/main/rfcs/0014-phase-9-anchor-compression-encoder-sweep.md),
+    /// v0.2 commits to *correctness* — zopfli-style size tuning is out of
+    /// scope and will land as v0.2.x patch releases.
+    public static func encode(_ input: Bytes, level: Encoder.Level = .default) -> Bytes {
+        Encoder(level: level).encode(input)
+    }
+
+    /// RFC 1950 zlib encoder. Single-shot in v0.2; streaming ships in v0.3.
+    public struct Encoder: Sendable {
+        /// Compression level — passed straight through to swift-deflate.
+        public typealias Level = Deflate.Encoder.Level
+
+        public let level: Level
+
+        public init(level: Level = .default) {
+            self.level = level
+        }
+
+        public func encode(_ input: Bytes) -> Bytes {
+            ZlibEncoder.encode(input, level: level)
+        }
+    }
+}
