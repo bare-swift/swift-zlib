@@ -135,14 +135,14 @@ struct Adler32Tests {
     @Test("ADLER32 of empty input is 1")
     func adlerEmpty() {
         var b = ContiguousArray<UInt8>()
-        #expect(Decoder.adler32(b) == 1)
+        #expect(Adler32.compute(b) == 1)
         _ = b
     }
 
     @Test("ADLER32 of 'abc' is 0x024D0127")
     func adlerAbc() {
         let bs: ContiguousArray<UInt8> = [0x61, 0x62, 0x63]
-        #expect(Decoder.adler32(bs) == 0x024D0127)
+        #expect(Adler32.compute(bs) == 0x024D0127)
     }
 
     @Test("ADLER32 of 'hello world' is 0x1A0B045D")
@@ -150,6 +150,6 @@ struct Adler32Tests {
         let bs: ContiguousArray<UInt8> = [
             0x68, 0x65, 0x6C, 0x6C, 0x6F, 0x20, 0x77, 0x6F, 0x72, 0x6C, 0x64,
         ]
-        #expect(Decoder.adler32(bs) == 0x1A0B045D)
+        #expect(Adler32.compute(bs) == 0x1A0B045D)
     }
 }

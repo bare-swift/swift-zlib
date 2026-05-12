@@ -55,27 +55,11 @@ enum Decoder {
             | (UInt32(raw[trailerStart + 2]) << 8)
             | UInt32(raw[trailerStart + 3])
 
-        let adlerActual = adler32(decompressed.storage)
+        let adlerActual = Adler32.compute(decompressed.storage)
         if adlerActual != adlerExpected {
             throw .adler32Mismatch
         }
 
         return decompressed
-    }
-
-    /// RFC 1950 § 9 ADLER-32 reference implementation. The modulus is
-    /// 65521 (the largest prime < 2^16). Each pair of `(s1, s2)` updates
-    /// can run for ~5552 bytes before `s2` overflows a UInt32; we fold
-    /// after each byte for simplicity. v0.2 may add the chunked-fold
-    /// optimization once profiling shows it matters.
-    static func adler32(_ bytes: ContiguousArray<UInt8>) -> UInt32 {
-        let mod: UInt32 = 65521
-        var s1: UInt32 = 1
-        var s2: UInt32 = 0
-        for b in bytes {
-            s1 = (s1 + UInt32(b)) % mod
-            s2 = (s2 + s1) % mod
-        }
-        return (s2 << 16) | s1
     }
 }
