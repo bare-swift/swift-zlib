@@ -174,6 +174,92 @@ struct StreamingTests {
         }
     }
 
+    // MARK: - Drain (v0.4)
+
+    @Test("drain() on fresh encoder emits zlib header (2 bytes)")
+    func drainFreshEmitsHeader() throws {
+        var encoder = Zlib.Streaming.Encoder()
+        let drained = encoder.drain()
+        // First drain emits the 2-byte zlib header even with no body yet.
+        #expect(drained.storage.count >= 2)
+        #expect(drained.storage[0] == 0x78)  // CMF: CM=8, CINFO=7
+    }
+
+    @Test("second drain() with no update between is empty")
+    func secondDrainEmpty() throws {
+        var encoder = Zlib.Streaming.Encoder()
+        _ = encoder.drain()  // emits header
+        let second = encoder.drain()
+        #expect(second.storage.count == 0)
+    }
+
+    @Test("drain() + finish() concatenated round-trips through decode")
+    func drainConcatRoundTrip() throws {
+        let payload = Self.bytesFromString("hello world hello world")
+        var encoder = Zlib.Streaming.Encoder()
+        encoder.update(payload)
+        let drained = encoder.drain()
+        let final = try encoder.finish()
+
+        var combined = Bytes()
+        combined.append(contentsOf: drained.storage)
+        combined.append(contentsOf: final.storage)
+        let plain = try Zlib.decode(combined)
+        #expect(Array(plain.storage) == Array(payload.storage))
+    }
+
+    @Test("multiple drains + finish round-trips")
+    func multipleDrains() throws {
+        var encoder = Zlib.Streaming.Encoder()
+        encoder.update(Self.bytesFromString("first"))
+        var collected = Bytes()
+        collected.append(contentsOf: encoder.drain().storage)
+        encoder.update(Self.bytesFromString("second"))
+        collected.append(contentsOf: encoder.drain().storage)
+        encoder.update(Self.bytesFromString("third"))
+        collected.append(contentsOf: encoder.drain().storage)
+        collected.append(contentsOf: (try encoder.finish()).storage)
+
+        let plain = try Zlib.decode(collected)
+        #expect(Array(plain.storage) == Array("firstsecondthird".utf8))
+    }
+
+    @Test("drain after finish is silent no-op")
+    func drainAfterFinish() throws {
+        var encoder = Zlib.Streaming.Encoder()
+        encoder.update(Self.bytesFromString("data"))
+        _ = try encoder.finish()
+        let drained = encoder.drain()
+        #expect(drained.storage.count == 0)
+    }
+
+    @Test("non-draining stream byte-equals concatenated-drains stream")
+    func drainConcatByteEquality() throws {
+        let chunk1 = Self.bytesFromString("aaaaaaaaaa")
+        let chunk2 = Self.bytesFromString("bbbbbbbbbb")
+
+        var reference = Zlib.Streaming.Encoder()
+        reference.update(chunk1)
+        reference.update(chunk2)
+        let referenceOutput = try reference.finish()
+
+        var draining = Zlib.Streaming.Encoder()
+        draining.update(chunk1)
+        let d1 = draining.drain()
+        draining.update(chunk2)
+        let d2 = draining.drain()
+        let d3 = try draining.finish()
+
+        var combined = Bytes()
+        combined.append(contentsOf: d1.storage)
+        combined.append(contentsOf: d2.storage)
+        combined.append(contentsOf: d3.storage)
+
+        #expect(Array(combined.storage) == Array(referenceOutput.storage))
+    }
+
+    // MARK: - v0.3 edge cases
+
     @Test("update after finish is silent no-op (then double-finish throws)")
     func updateAfterFinishNoOp() throws {
         var encoder = Zlib.Streaming.Encoder()

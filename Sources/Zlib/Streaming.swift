@@ -38,6 +38,7 @@ extension Zlib.Streaming {
         public let level: Level
 
         private var headerBytes: (UInt8, UInt8)
+        private var headerEmitted: Bool  // v0.4: track whether drain() has emitted the header
         private var deflateEncoder: Deflate.Streaming.Encoder
         private var adler: Adler32.Digest
         private var state: State
@@ -45,6 +46,7 @@ extension Zlib.Streaming {
         public init(level: Level = .default) {
             self.level = level
             self.headerBytes = Self.buildHeader(level: level)
+            self.headerEmitted = false
             self.deflateEncoder = Deflate.Streaming.Encoder(level: level)
             self.adler = Adler32.Digest()
             self.state = .open
@@ -60,9 +62,42 @@ extension Zlib.Streaming {
             adler.update(chunk.storage)
         }
 
-        /// Finalize the zlib stream: emit 2-byte header + DEFLATE body +
-        /// 4-byte big-endian ADLER32 trailer. Throws
-        /// ``ZlibError/encoderFinished`` on double-call.
+        /// Return the byte-aligned portion of the accumulated stream so far,
+        /// resetting the internal byte buffer. The encoder remains in the
+        /// open state — subsequent ``update(_:)`` and ``finish()`` calls
+        /// produce the remainder (including the ADLER32 trailer at finish).
+        ///
+        /// The first `drain()` call emits the 2-byte zlib header
+        /// (CMF + FLG) followed by the drained DEFLATE bytes. Subsequent
+        /// drains return only DEFLATE bytes (header already emitted).
+        ///
+        /// ADLER32 state accumulates across drain calls — drain does NOT
+        /// touch the checksum. The trailer is emitted only at `finish()`.
+        ///
+        /// Concatenating all `drain()` returns with the final `finish()`
+        /// return produces the **same bytes** as a single `finish()` call
+        /// would have produced (byte-for-byte equality, per RFC 1950).
+        ///
+        /// Silent no-op (returns empty `Bytes`) when called after `finish()`.
+        ///
+        /// Added in v0.4 for multi-coding HTTP streaming composition.
+        public mutating func drain() -> Bytes {
+            guard case .open = state else { return Bytes() }
+            var out = ContiguousArray<UInt8>()
+            if !headerEmitted {
+                out.append(headerBytes.0)
+                out.append(headerBytes.1)
+                headerEmitted = true
+            }
+            let deflateBytes = deflateEncoder.drain()
+            out.append(contentsOf: deflateBytes.storage)
+            return Bytes(out)
+        }
+
+        /// Finalize the zlib stream: emit 2-byte header (if not already
+        /// emitted via drain) + remaining DEFLATE body + 4-byte big-endian
+        /// ADLER32 trailer. Throws ``ZlibError/encoderFinished`` on
+        /// double-call.
         public mutating func finish() throws(ZlibError) -> Bytes {
             guard case .open = state else { throw .encoderFinished }
             state = .finished
@@ -76,8 +111,11 @@ extension Zlib.Streaming {
 
             var out = ContiguousArray<UInt8>()
             out.reserveCapacity(2 + deflateBytes.storage.count + 4)
-            out.append(headerBytes.0)
-            out.append(headerBytes.1)
+            if !headerEmitted {
+                out.append(headerBytes.0)
+                out.append(headerBytes.1)
+                headerEmitted = true
+            }
             out.append(contentsOf: deflateBytes.storage)
 
             // ADLER32 big-endian per RFC 1950 § 2.2.
