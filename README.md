@@ -1,6 +1,6 @@
 # swift-zlib
 
-RFC 1950 zlib codec — decoder (v0.1+) and encoder (v0.2+). Sendable, Foundation-free; wraps swift-deflate.
+RFC 1950 zlib codec — decoder (v0.1) + one-shot encoder (v0.2) + streaming encoder (v0.3). Sendable, Foundation-free; wraps swift-deflate.
 
 Part of the [bare-swift](https://github.com/bare-swift) ecosystem.
 
@@ -9,7 +9,7 @@ Part of the [bare-swift](https://github.com/bare-swift) ecosystem.
 Add to your `Package.swift`:
 
 ```swift
-.package(url: "https://github.com/bare-swift/swift-zlib.git", from: "0.1.0")
+.package(url: "https://github.com/bare-swift/swift-zlib.git", from: "0.3.0")
 ```
 
 Then depend on the `Zlib` product:
@@ -40,6 +40,28 @@ let payload: Bytes = ...
 let framed = Zlib.encode(payload, level: .default)
 // Round-trip property: Zlib.decode(framed) == payload
 ```
+
+### Streaming encode (v0.3+)
+
+```swift
+import Zlib
+import Bytes
+
+var encoder = Zlib.Streaming.Encoder(level: .default)
+encoder.update(chunk1)
+encoder.update(chunk2)
+let framed = try encoder.finish()
+let plain = try Zlib.decode(framed)
+// plain == chunk1 + chunk2
+```
+
+`Zlib.Streaming.Encoder` wraps `Deflate.Streaming.Encoder` (swift-deflate
+v0.3) for the body + an incremental ADLER32 over uncompressed bytes + 2-byte
+zlib header + 4-byte big-endian ADLER32 trailer. Each `update(_:)` feeds
+the chunk to the inner DEFLATE encoder and updates the running ADLER32.
+Empty chunks are no-ops. `finish()` emits the full zlib stream. After
+`finish()` the encoder is consumed — further `update(_:)` calls are silent
+no-ops; another `finish()` throws `encoderFinished`.
 
 Levels pass straight through to swift-deflate:
 

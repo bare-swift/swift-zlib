@@ -61,3 +61,9 @@ extension Zlib {
         }
     }
 }
+
+extension Zlib {
+    /// Streaming encoder namespace (v0.3+). For one-shot compression of
+    /// bounded inputs, use ``Zlib/encode(_:level:)``.
+    public enum Streaming: Sendable {}
+}

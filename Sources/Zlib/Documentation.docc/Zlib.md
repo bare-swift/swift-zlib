@@ -1,13 +1,14 @@
 # ``Zlib``
 
-RFC 1950 zlib codec — decoder (v0.1+) and encoder (v0.2+). Sendable, Foundation-free.
+RFC 1950 zlib codec — decoder (v0.1) + one-shot encoder (v0.2) + streaming encoder (v0.3). Sendable, Foundation-free.
 
 ## Overview
 
 `Zlib` provides both halves of RFC 1950:
 
 - ``Zlib/decode(_:)`` — v0.1+. Parses the 2-byte header (with the `(CMF*256+FLG) % 31 == 0` check), inflates the DEFLATE body via swift-deflate, validates the 4-byte big-endian ADLER32 trailer.
-- ``Zlib/encode(_:level:)`` — v0.2+. Emits CMF=0x78 (CM=8 deflate, CINFO=7 → 32 KiB window) + FLG with FLEVEL hint and matching FCHECK, the DEFLATE body, and the big-endian ADLER32 trailer.
+- ``Zlib/encode(_:level:)`` — v0.2+. Emits CMF=0x78 (CM=8 deflate, CINFO=7 → 32 KiB window) + FLG with FLEVEL hint and matching FCHECK, the DEFLATE body (one-shot), and the big-endian ADLER32 trailer.
+- ``Zlib/Streaming/Encoder`` — v0.3+. Streaming compression: feed chunks via `update(_:)`, finalize with `finish()`.
 
 ```swift
 import Zlib
@@ -16,6 +17,20 @@ import Bytes
 let encoded = Zlib.encode(payload, level: .default)
 let back = try Zlib.decode(encoded)  // round-trip
 ```
+
+**Streaming compress** (since v0.3):
+
+```swift
+var encoder = Zlib.Streaming.Encoder(level: .default)
+encoder.update(chunk1)
+encoder.update(chunk2)
+let framed = try encoder.finish()
+```
+
+Wraps `Deflate.Streaming.Encoder` for the body + an incremental ADLER32
+over uncompressed bytes + zlib header/trailer framing. Each `update(_:)`
+feeds the chunk to the inner DEFLATE encoder and updates the running
+ADLER32. `finish()` emits the full zlib stream.
 
 **HTTP `Content-Encoding: deflate`** actually means zlib-framed DEFLATE in practice — RFC 7230 § 4.2.2 acknowledges that some implementations send raw DEFLATE under the same name, but every mainstream web server / client uses zlib framing. Use this package, not raw swift-deflate, for `Content-Encoding: deflate` payloads.
 
@@ -32,6 +47,11 @@ Per [RFC-0014](https://github.com/bare-swift/bare-swift/blob/main/rfcs/0014-phas
 - ``Zlib/encode(_:level:)``
 - ``Zlib/Encoder``
 - ``Zlib/Encoder/Level``
+
+### Streaming encode (v0.3+)
+
+- ``Zlib/Streaming``
+- ``Zlib/Streaming/Encoder``
 
 ### Errors
 

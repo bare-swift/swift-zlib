@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-05-16
+
+### Added
+- **Streaming encoder** — `Zlib.Streaming.Encoder` struct with `init(level:)` / `update(_:)` / `finish()`. Wraps `Deflate.Streaming.Encoder` (swift-deflate v0.3) for the DEFLATE body + incremental ADLER32 over uncompressed bytes via new `Adler32.Digest` + 2-byte zlib header + 4-byte big-endian ADLER32 trailer.
+- `Zlib.Streaming` public namespace enum.
+- `ZlibError.encoderFinished` — thrown when `finish()` is called on an already-finished encoder.
+- Internal `Adler32.Digest` struct — incremental ADLER32 (`init` + `update(_:)` + `finalize()`). v0.2's `Adler32.compute(_:)` one-shot still works (now implemented atop `Digest`).
+- 15 new tests covering round-trip, all four levels, header check validity, and error/edge cases.
+
+### Dependencies
+- swift-deflate dep bumped 0.2.0 → 0.3.0 (for `Deflate.Streaming.Encoder`).
+
+### Stream-format notes
+- Streaming output is **valid zlib** that decodes via the same `Zlib.decode(_:)` v0.1 API.
+- No window carry across chunks in v0.3 (inherited from swift-deflate v0.3).
+- CMF/FLG header check `(CMF*256 + FLG) % 31 == 0` is enforced by construction.
+
+### Migration (v0.2 → v0.3)
+- **Additive only — non-breaking.** All v0.2 APIs unchanged.
+- `Zlib.encode(_:level:)` continues to emit byte-equal output to v0.2 (regression-tested via existing v0.2 round-trip tests).
+- `Zlib.Encoder` struct unchanged.
+- `Zlib.decode(_:)` unchanged from v0.1.
+- `ZlibError` adds 1 new case (additive; existing cases unchanged).
+
+### Phase 24
+- Tranche 24B of [RFC-0029](https://github.com/bare-swift/bare-swift/blob/main/rfcs/0029-phase-24-anchor-gzip-zlib-v0.3-streaming-encoders.md). Completes codec-tier streaming sweep at package level (brotli + deflate + gzip + zlib all stream-capable).
+
 ## [0.2.0] - 2026-05-12
 
 ### Added

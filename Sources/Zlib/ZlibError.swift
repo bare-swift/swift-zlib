@@ -27,4 +27,8 @@ public enum ZlibError: Error, Equatable, Sendable {
 
     /// Wrapped DEFLATE-level error from swift-deflate.
     case malformedDeflate(DeflateError)
+
+    /// Encoder: ``Zlib/Streaming/Encoder/finish()`` was called twice on
+    /// the same encoder.
+    case encoderFinished
 }

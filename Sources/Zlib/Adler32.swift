@@ -7,14 +7,31 @@
 /// byte keeps the implementation small; chunked-fold optimization may
 /// land later once profiling shows it matters.
 enum Adler32 {
+    static let modulus: UInt32 = 65521
+
     static func compute(_ bytes: ContiguousArray<UInt8>) -> UInt32 {
-        let mod: UInt32 = 65521
-        var s1: UInt32 = 1
-        var s2: UInt32 = 0
-        for b in bytes {
-            s1 = (s1 + UInt32(b)) % mod
-            s2 = (s2 + s1) % mod
+        var digest = Digest()
+        digest.update(bytes)
+        return digest.finalize()
+    }
+
+    /// Incremental ADLER-32. Initialize, feed bytes via ``update(_:)`` zero
+    /// or more times, then ``finalize()`` to obtain the checksum value.
+    struct Digest: Sendable {
+        private var s1: UInt32 = 1
+        private var s2: UInt32 = 0
+
+        init() {}
+
+        mutating func update(_ bytes: some Sequence<UInt8>) {
+            for b in bytes {
+                s1 = (s1 + UInt32(b)) % Adler32.modulus
+                s2 = (s2 + s1) % Adler32.modulus
+            }
         }
-        return (s2 << 16) | s1
+
+        func finalize() -> UInt32 {
+            (s2 << 16) | s1
+        }
     }
 }
