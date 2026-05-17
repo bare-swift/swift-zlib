@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-05-17
+
+### Added
+- **`Zlib.Streaming.Decoder`** — streaming-decode counterpart to v0.3's `Streaming.Encoder`. Mirrors the canonical streaming shape: `init() / update(_:) / finish() throws -> Bytes`. Wraps `Deflate.Streaming.Decoder` (swift-deflate v0.5). Buffers compressed input internally; at `finish()`, calls `Zlib.decode(_:)` one-shot which parses the 2-byte CMF/FLG header, decompresses the DEFLATE body, verifies the big-endian ADLER32 trailer, and returns the decompressed output.
+- `ZlibError.decoderFinished` — thrown when `finish()` is called on an already-finished decoder.
+- 10 new tests covering round-trip via v0.2 encoder (single chunk, multi-chunk, tiny chunks, 70 KiB payload, single-byte payload), truncated-input error, bad-header error, double-finish error, update-after-finish no-op, empty-update no-op.
+
+### v0.5 implementation note (honest scope under limitation)
+- The decoder buffers all compressed input internally; decoded output is **not yielded incrementally** during `update(_:)`. Ships the streaming-symmetric API surface; true memory-streaming zlib decode is a v0.6+ candidate (inherits when swift-deflate v0.6 ships state-machine-refactored streaming inflate).
+- Honest-scope-under-limitation pattern (Phase 25 → 28 → 30 → 31 instance).
+
+### Dependencies
+- swift-deflate dep bumped 0.4.0 → 0.5.0 (for `Deflate.Streaming.Decoder`).
+
+### Migration (v0.4 → v0.5)
+- **Additive only — non-breaking.** All v0.1-v0.4 APIs unchanged.
+- `ZlibError` adds 1 new case (additive).
+
+### Phase 31
+- Tranche 31B of [RFC-0036](https://github.com/bare-swift/bare-swift/blob/main/rfcs/0036-phase-31-anchor-gzip-zlib-v0.5-streaming-inflate.md). Phase 31 COMPLETE — coordinated 2-tranche sweep added `Streaming.Decoder` to swift-gzip + swift-zlib; deflate-family streaming-decode story COMPLETE.
+
 ## [0.4.0] — 2026-05-17
 
 ### Added

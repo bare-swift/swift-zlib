@@ -258,6 +258,148 @@ struct StreamingTests {
         #expect(Array(combined.storage) == Array(referenceOutput.storage))
     }
 
+    // MARK: - Streaming Decoder (v0.5)
+
+    @Test("Decoder: single chunk round-trip via v0.2 encoder")
+    func decoderSingleChunkRoundTrip() throws(ZlibError) {
+        let payload = Self.bytesFromString("hello world hello world")
+        let zlibbed = Zlib.encode(payload)
+        var decoder = Zlib.Streaming.Decoder()
+        decoder.update(zlibbed)
+        let plain = try decoder.finish()
+        #expect(Array(plain.storage) == Array(payload.storage))
+    }
+
+    @Test("Decoder: multi-chunk input round-trip")
+    func decoderMultiChunkRoundTrip() throws(ZlibError) {
+        let payload = Self.bytesFromString("The quick brown fox jumps over the lazy dog.")
+        let zlibbed = Zlib.encode(payload)
+        let third = zlibbed.storage.count / 3
+        let c1 = ContiguousArray(zlibbed.storage[0..<third])
+        let c2 = ContiguousArray(zlibbed.storage[third..<(2 * third)])
+        let c3 = ContiguousArray(zlibbed.storage[(2 * third)..<zlibbed.storage.count])
+        var decoder = Zlib.Streaming.Decoder()
+        decoder.update(Bytes(Array(c1)))
+        decoder.update(Bytes(Array(c2)))
+        decoder.update(Bytes(Array(c3)))
+        let plain = try decoder.finish()
+        #expect(Array(plain.storage) == Array(payload.storage))
+    }
+
+    @Test("Decoder: tiny 1-byte chunks round-trip")
+    func decoderTinyChunks() throws(ZlibError) {
+        let payload = Self.bytesFromString("hello")
+        let zlibbed = Zlib.encode(payload)
+        var decoder = Zlib.Streaming.Decoder()
+        for byte in zlibbed.storage {
+            decoder.update(Self.bytesFromArray([byte]))
+        }
+        let plain = try decoder.finish()
+        #expect(Array(plain.storage) == Array(payload.storage))
+    }
+
+    @Test("Decoder: 70 KiB payload round-trip")
+    func decoderLargePayload() throws(ZlibError) {
+        let payload = Self.bytesFromArray([UInt8](repeating: 0x42, count: 70 * 1024))
+        let zlibbed = Zlib.encode(payload)
+        var decoder = Zlib.Streaming.Decoder()
+        decoder.update(zlibbed)
+        let plain = try decoder.finish()
+        #expect(plain.storage.count == 70 * 1024)
+        #expect(Array(plain.storage) == Array(payload.storage))
+    }
+
+    @Test("Decoder: truncated input throws")
+    func decoderTruncatedThrows() {
+        let payload = Self.bytesFromString("hello")
+        let zlibbed = Zlib.encode(payload)
+        let truncated = ContiguousArray(zlibbed.storage.dropLast(3))
+        var decoder = Zlib.Streaming.Decoder()
+        decoder.update(Bytes(Array(truncated)))
+        do {
+            _ = try decoder.finish()
+            Issue.record("expected throw")
+        } catch ZlibError.truncated, ZlibError.adler32Mismatch, ZlibError.malformedDeflate {
+            // any of these is acceptable for truncated input
+        } catch {
+            Issue.record("unexpected error: \(error)")
+        }
+    }
+
+    @Test("Decoder: bad header throws")
+    func decoderBadHeaderThrows() {
+        // CMF=0x00 + FLG=0x00 fails the header check.
+        let bad = Self.bytesFromArray([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
+        var decoder = Zlib.Streaming.Decoder()
+        decoder.update(bad)
+        do {
+            _ = try decoder.finish()
+            Issue.record("expected throw")
+        } catch ZlibError.unsupportedCompressionMethod, ZlibError.headerCheckFailed,
+                ZlibError.invalidWindowSize, ZlibError.truncated {
+            // any of these is acceptable for bad header
+        } catch {
+            Issue.record("unexpected error: \(error)")
+        }
+    }
+
+    @Test("Decoder: double-finish throws decoderFinished")
+    func decoderDoubleFinishThrows() throws(ZlibError) {
+        let zlibbed = Zlib.encode(Self.bytesFromString("data"))
+        var decoder = Zlib.Streaming.Decoder()
+        decoder.update(zlibbed)
+        _ = try decoder.finish()
+        do {
+            _ = try decoder.finish()
+            Issue.record("expected throw")
+        } catch ZlibError.decoderFinished {
+            // expected
+        } catch {
+            Issue.record("unexpected error: \(error)")
+        }
+    }
+
+    @Test("Decoder: update after finish is silent no-op (then double-finish throws)")
+    func decoderUpdateAfterFinishNoOp() throws(ZlibError) {
+        let payload = Self.bytesFromString("first")
+        let zlibbed = Zlib.encode(payload)
+        var decoder = Zlib.Streaming.Decoder()
+        decoder.update(zlibbed)
+        let plain1 = try decoder.finish()
+        decoder.update(Zlib.encode(Self.bytesFromString("second")))
+        do {
+            _ = try decoder.finish()
+            Issue.record("expected throw")
+        } catch ZlibError.decoderFinished {
+            // expected
+        } catch {
+            Issue.record("unexpected error: \(error)")
+        }
+        #expect(Array(plain1.storage) == Array(payload.storage))
+    }
+
+    @Test("Decoder: empty update is no-op (whole flow still works)")
+    func decoderEmptyUpdateNoOp() throws(ZlibError) {
+        let payload = Self.bytesFromString("hello")
+        let zlibbed = Zlib.encode(payload)
+        var decoder = Zlib.Streaming.Decoder()
+        decoder.update(Bytes())  // no-op
+        decoder.update(zlibbed)
+        decoder.update(Bytes())  // no-op
+        let plain = try decoder.finish()
+        #expect(Array(plain.storage) == Array(payload.storage))
+    }
+
+    @Test("Decoder: single-byte payload round-trip")
+    func decoderSingleBytePayload() throws(ZlibError) {
+        let payload = Self.bytesFromArray([0x7F])
+        let zlibbed = Zlib.encode(payload)
+        var decoder = Zlib.Streaming.Decoder()
+        decoder.update(zlibbed)
+        let plain = try decoder.finish()
+        #expect(Array(plain.storage) == [0x7F])
+    }
+
     // MARK: - v0.3 edge cases
 
     @Test("update after finish is silent no-op (then double-finish throws)")

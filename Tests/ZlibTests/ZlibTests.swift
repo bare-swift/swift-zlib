@@ -272,7 +272,7 @@ struct ZlibV01StabilityTests {
         switch e {
         case .truncated, .unsupportedCompressionMethod, .invalidWindowSize,
              .headerCheckFailed, .presetDictionaryUnsupported, .adler32Mismatch,
-             .malformedDeflate, .encoderFinished:
+             .malformedDeflate, .encoderFinished, .decoderFinished:
             #expect(true)
         }
     }

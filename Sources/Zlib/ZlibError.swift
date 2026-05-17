@@ -31,4 +31,8 @@ public enum ZlibError: Error, Equatable, Sendable {
     /// Encoder: ``Zlib/Streaming/Encoder/finish()`` was called twice on
     /// the same encoder.
     case encoderFinished
+
+    /// Decoder: ``Zlib/Streaming/Decoder/finish()`` was called twice on
+    /// the same decoder. Added in v0.5.
+    case decoderFinished
 }

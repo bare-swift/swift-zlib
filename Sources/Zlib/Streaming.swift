@@ -151,3 +151,61 @@ extension Zlib.Streaming {
         }
     }
 }
+
+extension Zlib.Streaming {
+    /// Streaming zlib decoder. Feed compressed chunks via ``update(_:)``
+    /// and finalize with ``finish()``. The decoder mirrors
+    /// ``Zlib/Streaming/Encoder``'s shape for API symmetry.
+    ///
+    /// **v0.5 implementation note (honest scope under limitation):** the
+    /// decoder buffers all compressed input bytes internally and runs
+    /// ``Zlib/decode(_:)`` one-shot at `finish()`. The decoded output is
+    /// not yielded incrementally during `update(_:)`. True memory-
+    /// streaming zlib decode requires a state-machine refactor of the
+    /// underlying `Deflate.Streaming.Decoder` (v0.5 buffering wrap) →
+    /// `Deflate.Streaming.Decoder` v0.6+ would enable it; zlib v0.6 would
+    /// inherit. v0.5 ships the streaming-symmetric API surface today.
+    ///
+    /// `Decoder` is a value type. Copying mid-stream produces two
+    /// divergent decoders. Treat as single-owner.
+    ///
+    /// After ``finish()`` the decoder is in the finished state.
+    /// ``update(_:)`` after finish is a silent no-op; double-finish throws
+    /// ``ZlibError/decoderFinished``.
+    ///
+    /// Added in v0.5 per RFC-0036.
+    public struct Decoder: Sendable {
+        private enum State: Sendable {
+            case open
+            case finished
+        }
+
+        private var buffer: ContiguousArray<UInt8>
+        private var state: State
+
+        public init() {
+            self.buffer = ContiguousArray<UInt8>()
+            self.state = .open
+        }
+
+        /// Feed a chunk of compressed input. Empty chunk = no-op.
+        /// Silent no-op when called after ``finish()``.
+        public mutating func update(_ chunk: Bytes) {
+            guard case .open = state else { return }
+            if chunk.isEmpty { return }
+            buffer.append(contentsOf: chunk.storage)
+        }
+
+        /// Finalize the stream: parse zlib header (CMF/FLG), decompress
+        /// DEFLATE body, verify big-endian ADLER32 trailer. Return
+        /// decompressed output. Throws ``ZlibError/decoderFinished`` on
+        /// double-call; throws other `ZlibError` cases (truncated,
+        /// headerCheckFailed, adler32Mismatch, malformedDeflate, etc.)
+        /// if the buffered input is not a valid zlib stream.
+        public mutating func finish() throws(ZlibError) -> Bytes {
+            guard case .open = state else { throw .decoderFinished }
+            state = .finished
+            return try Zlib.decode(Bytes(buffer))
+        }
+    }
+}
