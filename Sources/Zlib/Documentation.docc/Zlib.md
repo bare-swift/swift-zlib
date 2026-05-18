@@ -1,6 +1,6 @@
 # ``Zlib``
 
-RFC 1950 zlib codec — decoder (v0.1) + one-shot encoder (v0.2) + streaming encoder (v0.3). Sendable, Foundation-free.
+RFC 1950 zlib codec — decoder (v0.1) + one-shot encoder (v0.2) + streaming encoder (v0.3) + streaming decoder (v0.5, inherits true memory-streaming from swift-deflate v0.6 at v0.6+). Sendable, Foundation-free.
 
 ## Overview
 
